@@ -312,6 +312,9 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
             // that task's filter is IsExecuting=true.
             .AddScoped<IInterruptedRecoveryScanner, Elsa.Workflows.Runtime.Services.InterruptedRecoveryScanner>()
             .AddStartupTask<Elsa.Workflows.Runtime.StartupTasks.RecoverInterruptedWorkflowsStartupTask>()
+            // Stale Cancelling rows are a different set from Interrupted. This scan re-dispatches cancellation.
+            .AddScoped<ICancellingRecoveryScanner, Elsa.Workflows.Runtime.Services.CancellingRecoveryScanner>()
+            .AddStartupTask<Elsa.Workflows.Runtime.StartupTasks.RecoverCancellingWorkflowsStartupTask>()
             // Internal bookmark-queue processor surfaced as an ingress source for diagnostic visibility (FR-006).
             // Pause behavior is enforced inside BookmarkQueueProcessor via IQuiescenceSignal (FR-024).
             .AddSingleton<IIngressSource, Elsa.Workflows.Runtime.IngressSources.InternalBookmarkQueueIngressSource>()
@@ -418,6 +421,7 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
             .AddRecurringTask<TriggerBookmarkQueueRecurringTask>(TimeSpan.FromMinutes(1))
             .AddRecurringTask<PurgeBookmarkQueueRecurringTask>(TimeSpan.FromSeconds(10))
             .AddRecurringTask<RestartInterruptedWorkflowsTask>(TimeSpan.FromMinutes(5)) // Same default as the workflow liveness threshold.
+            .AddRecurringTask<RecoverCancellingWorkflowsTask>(TimeSpan.FromMinutes(5)) // Same default as CancellingRecoveryThreshold.
             .AddRecurringTask<ProcessWorkflowDispatchOutboxRecurringTask>(TimeSpan.FromSeconds(10))
             .AddRecurringTask<RefreshWorkflowDefinitionActivityRegistryTask>(TimeSpan.FromSeconds(5))
             

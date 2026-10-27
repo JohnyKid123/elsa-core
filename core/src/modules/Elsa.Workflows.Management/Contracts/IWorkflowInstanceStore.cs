@@ -207,8 +207,9 @@ public interface IWorkflowInstanceStore
     /// </summary>
     /// <remarks>
     /// When <paramref name="expectedUpdatedAt"/> has a value, <see cref="WorkflowInstance.UpdatedAt"/> must equal it.
-    /// A transition to <see cref="WorkflowSubStatus.Cancelling"/> also requires the row not to be executing and
-    /// <paramref name="expected"/> to be <see cref="WorkflowSubStatus.Suspended"/>.
+    /// A transition to <see cref="WorkflowSubStatus.Cancelling"/> also requires the row not to be executing.
+    /// Entering <see cref="WorkflowSubStatus.Cancelling"/> requires <paramref name="expected"/> to be <see cref="WorkflowSubStatus.Suspended"/>.
+    /// A recovery claim refreshes a row that is already <see cref="WorkflowSubStatus.Cancelling"/> and writes a new stamp.
     /// A transition out of <see cref="WorkflowSubStatus.Cancelling"/> may only return to <see cref="WorkflowSubStatus.Suspended"/>.
     /// Only those two columns are written. <see cref="WorkflowInstance.WorkflowState"/>, bookmarks and execution progress stay as they are.
     /// The default returns <c>false</c> so a provider that cannot do this conditional write fails closed.

@@ -213,6 +213,7 @@ Recent graceful shutdown work added node-local quiescence and drain concepts. So
 - [DrainOrchestratorHostedService](../../src/modules/Elsa.Workflows.Runtime/HostedServices/DrainOrchestratorHostedService.cs)
 - [InterruptedRecoveryScanner](../../src/modules/Elsa.Workflows.Runtime/Services/InterruptedRecoveryScanner.cs)
 - [RecoverInterruptedWorkflowsStartupTask](../../src/modules/Elsa.Workflows.Runtime/StartupTasks/RecoverInterruptedWorkflowsStartupTask.cs)
+- [CancellingRecoveryScanner](../../src/modules/Elsa.Workflows.Runtime/Services/CancellingRecoveryScanner.cs) re-dispatches cancellation for running, non-executing `Cancelling` instances whose `UpdatedAt` is older than `RuntimeOptions.CancellingRecoveryThreshold` (default 5 minutes). It runs at startup and on a 5 minute recurring task. `TimeSpan.Zero` disables it. The Interrupted restart path is unchanged.
 
 The design intent is captured in [specs/002-graceful-shutdown/plan.md](../specs/002-graceful-shutdown/plan.md).
 

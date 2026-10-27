@@ -236,6 +236,9 @@ public class WorkflowRuntimeFeature : IShellFeature
             .AddTransient<CShells.Lifecycle.IDrainHandler, Lifecycle.ElsaShellDrainHandler>()
             .AddScoped<IInterruptedRecoveryScanner, InterruptedRecoveryScanner>()
             .AddStartupTask<StartupTasks.RecoverInterruptedWorkflowsStartupTask>()
+            // Stale Cancelling rows are a different set from Interrupted. This scan re-dispatches cancellation.
+            .AddScoped<ICancellingRecoveryScanner, CancellingRecoveryScanner>()
+            .AddStartupTask<StartupTasks.RecoverCancellingWorkflowsStartupTask>()
             .AddSingleton<IIngressSource, IngressSources.InternalBookmarkQueueIngressSource>()
             .AddTransient<CShells.Lifecycle.IShellInitializer, Lifecycle.InitializePauseStateShellInitializer>()
             
@@ -339,6 +342,7 @@ public class WorkflowRuntimeFeature : IShellFeature
             .AddRecurringTask<TriggerBookmarkQueueRecurringTask>(TimeSpan.FromMinutes(1))
             .AddRecurringTask<PurgeBookmarkQueueRecurringTask>(TimeSpan.FromSeconds(10))
             .AddRecurringTask<RestartInterruptedWorkflowsTask>(TimeSpan.FromMinutes(5)) // Same default as the workflow liveness threshold.
+            .AddRecurringTask<RecoverCancellingWorkflowsTask>(TimeSpan.FromMinutes(5)) // Same default as CancellingRecoveryThreshold.
             .AddRecurringTask<ProcessWorkflowDispatchOutboxRecurringTask>(TimeSpan.FromSeconds(10))
             .AddRecurringTask<RefreshWorkflowDefinitionActivityRegistryTask>(TimeSpan.FromSeconds(5))
 

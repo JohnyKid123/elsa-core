@@ -94,6 +94,7 @@ public class WorkflowCancellationService(
     /// Marks a non-executing, unowned suspended instance as Cancelling, then dispatches.
     /// Pending and Interrupted stay unmarked so the pending run path and the interrupted-workflow scan still own them.
     /// A crash after this mark and before enqueue can leave a suspended instance in Cancelling.
+    /// <see cref="ICancellingRecoveryScanner"/> re-dispatches that row once <c>UpdatedAt</c> is older than the recovery threshold.
     /// </summary>
     private async Task CancelInstanceAsync(WorkflowInstance instance, CancellationToken cancellationToken)
     {
