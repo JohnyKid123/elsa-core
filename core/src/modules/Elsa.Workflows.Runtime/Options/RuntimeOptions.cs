@@ -31,4 +31,19 @@ public class RuntimeOptions
     /// This provides control over memory consumption of the application.
     /// </remarks>
     public int RestartInterruptedWorkflowsBatchSize { get; set; } = 100;
+
+    /// <summary>
+    /// How long a running, non-executing instance may stay in <see cref="WorkflowSubStatus.Cancelling"/> before recovery re-dispatches cancellation.
+    /// </summary>
+    /// <remarks>
+    /// The age is <see cref="WorkflowInstance.UpdatedAt"/>, which the Cancelling mark writes.
+    /// The default matches <see cref="InactivityThreshold"/>.
+    /// <see cref="TimeSpan.Zero"/> or a negative value disables the scan.
+    /// </remarks>
+    public TimeSpan CancellingRecoveryThreshold { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How many Cancelling instances the recovery scan loads in one page.
+    /// </summary>
+    public int CancellingRecoveryBatchSize { get; set; } = 100;
 }

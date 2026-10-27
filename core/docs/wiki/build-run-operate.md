@@ -148,6 +148,7 @@ Health checks are mapped to `/` and `/health/live` for process liveness and `/he
 Common runtime-related options in the reference host:
 
 - `RuntimeOptions.InactivityThreshold`
+- `RuntimeOptions.CancellingRecoveryThreshold` (default 5 minutes; `TimeSpan.Zero` disables stale Cancelling re-dispatch) and `RuntimeOptions.CancellingRecoveryBatchSize`
 - `BookmarkQueuePurgeOptions.Ttl`
 - `CachingOptions.CacheDuration`
 - `IncidentOptions.DefaultIncidentStrategy`

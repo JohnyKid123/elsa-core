@@ -406,6 +406,91 @@ public class MemoryWorkflowInstanceStoreTests
         Assert.Equal(originalUpdatedAt, instance.UpdatedAt);
     }
 
+    [Fact(DisplayName = "TryTransitionSubStatusAsync refreshes a Cancelling stamp and leaves execution state alone")]
+    public async Task TryTransition_RefreshesCancellingStamp()
+    {
+        var cancellingAt = new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
+        var claimedAt = cancellingAt.AddMinutes(10);
+        var state = SuspendedState();
+        state.SubStatus = WorkflowSubStatus.Cancelling;
+        var store = CreateStore(new WorkflowInstance
+        {
+            Id = "wf-1",
+            DefinitionId = "def-1",
+            DefinitionVersionId = "ver-1",
+            Version = 1,
+            Status = WorkflowStatus.Running,
+            SubStatus = WorkflowSubStatus.Cancelling,
+            IsExecuting = false,
+            UpdatedAt = cancellingAt,
+            WorkflowState = state
+        });
+
+        var claimed = await store.TryTransitionSubStatusAsync("wf-1", WorkflowSubStatus.Cancelling, cancellingAt, WorkflowSubStatus.Cancelling, claimedAt);
+
+        Assert.True(claimed);
+        var instance = await store.FindAsync(new() { Id = "wf-1" });
+        Assert.NotNull(instance);
+        Assert.Equal(WorkflowStatus.Running, instance.Status);
+        Assert.Equal(WorkflowSubStatus.Cancelling, instance.SubStatus);
+        Assert.False(instance.IsExecuting);
+        Assert.Equal(claimedAt, instance.UpdatedAt);
+        Assert.Equal(WorkflowSubStatus.Cancelling, state.SubStatus);
+        Assert.Equal("bm-1", Assert.Single(state.Bookmarks).Id);
+    }
+
+    [Fact(DisplayName = "TryTransitionSubStatusAsync does not refresh Cancelling when the stamp has moved")]
+    public async Task TryTransition_RefreshLosesWhenStampMoved()
+    {
+        var cancellingAt = new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
+        var movedAt = cancellingAt.AddMinutes(1);
+        var store = CreateStore(new WorkflowInstance
+        {
+            Id = "wf-1",
+            DefinitionId = "def-1",
+            DefinitionVersionId = "ver-1",
+            Version = 1,
+            Status = WorkflowStatus.Running,
+            SubStatus = WorkflowSubStatus.Cancelling,
+            IsExecuting = false,
+            UpdatedAt = movedAt
+        });
+
+        var claimed = await store.TryTransitionSubStatusAsync("wf-1", WorkflowSubStatus.Cancelling, cancellingAt, WorkflowSubStatus.Cancelling, cancellingAt.AddMinutes(10));
+
+        Assert.False(claimed);
+        var instance = await store.FindAsync(new() { Id = "wf-1" });
+        Assert.NotNull(instance);
+        Assert.Equal(WorkflowSubStatus.Cancelling, instance.SubStatus);
+        Assert.Equal(movedAt, instance.UpdatedAt);
+    }
+
+    [Fact(DisplayName = "TryTransitionSubStatusAsync does not refresh an executing Cancelling row")]
+    public async Task TryTransition_RefreshRefusesExecutingCancellingRow()
+    {
+        var cancellingAt = new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
+        var store = CreateStore(new WorkflowInstance
+        {
+            Id = "wf-1",
+            DefinitionId = "def-1",
+            DefinitionVersionId = "ver-1",
+            Version = 1,
+            Status = WorkflowStatus.Running,
+            SubStatus = WorkflowSubStatus.Cancelling,
+            IsExecuting = true,
+            UpdatedAt = cancellingAt
+        });
+
+        var claimed = await store.TryTransitionSubStatusAsync("wf-1", WorkflowSubStatus.Cancelling, cancellingAt, WorkflowSubStatus.Cancelling, cancellingAt.AddMinutes(10));
+
+        Assert.False(claimed);
+        var instance = await store.FindAsync(new() { Id = "wf-1" });
+        Assert.NotNull(instance);
+        Assert.Equal(WorkflowSubStatus.Cancelling, instance.SubStatus);
+        Assert.True(instance.IsExecuting);
+        Assert.Equal(cancellingAt, instance.UpdatedAt);
+    }
+
     [Fact(DisplayName = "TryTransitionSubStatusAsync does not restore when UpdatedAt is not the mark stamp")]
     public async Task TryTransition_DoesNotRestoreWhenStampDiffers()
     {

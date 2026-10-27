@@ -15,11 +15,15 @@ public static class WorkflowSubStatusExtensions
 
     /// <summary>
     /// A transition into <see cref="WorkflowSubStatus.Cancelling"/> starts from <see cref="IsCancellableSubStatus"/>.
-    /// A transition out of <see cref="WorkflowSubStatus.Cancelling"/> returns to that same sub-status.
+    /// A <see cref="WorkflowSubStatus.Cancelling"/> to <see cref="WorkflowSubStatus.Cancelling"/> pair refreshes the stamp so recovery can claim the row.
+    /// A transition out of <see cref="WorkflowSubStatus.Cancelling"/> returns to <see cref="IsCancellableSubStatus"/>.
     /// Any other pair is not a cancellation transition.
     /// </summary>
     public static bool IsPermittedSubStatusTransition(this WorkflowSubStatus expected, WorkflowSubStatus next)
     {
+        if (expected == WorkflowSubStatus.Cancelling && next == WorkflowSubStatus.Cancelling)
+            return true;
+
         if (next == WorkflowSubStatus.Cancelling)
             return expected.IsCancellableSubStatus();
 
