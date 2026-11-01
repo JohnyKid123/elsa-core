@@ -171,6 +171,8 @@ Bookmark queue processing is handled by:
 
 Expired bookmark queue items are moved to the dead-letter store before they are removed from the active queue. Processing failures increment `DeliveryAttempts`; when `BookmarkQueuePurgeOptions.MaxDeliveryAttempts` is reached, the queue item is dead-lettered with the last exception type and message. `BookmarkQueuePurgeOptions.Ttl` controls active queue expiry, and `BookmarkQueuePurgeOptions.DeadLetterTtl` controls how long dead-letter records are retained before the purger deletes them.
 
+The recurring bookmark queue trigger and purge run once per cycle across all tenants. The trigger only wakes the workers of tenants that have queue items, and the purge handles each tenant's items under that tenant. A tenant with its own database (a connection string in its configuration) is purged and checked separately in its own scope (see [Bookmark queue recurring tasks](../migrations/bookmark-queue-recurring-tasks.md)).
+
 Operators can inspect and manage dead-lettered bookmark queue items through the workflow API:
 
 - `GET|POST /elsa/api/bookmark-queue/dead-letters`: requires `read:bookmark-queue:dead-letters`.
@@ -190,6 +192,29 @@ Workflow and activity execution logs flow through sinks and stores:
 - [DefaultActivityExecutionMapper](../../src/modules/Elsa.Workflows.Runtime/Services/DefaultActivityExecutionMapper.cs)
 
 API endpoints under `WorkflowInstances/Journal`, `ActivityExecutions`, and `ActivityExecutionSummaries` expose this data.
+
+## Cancellation And The Cancelling Sub-Status
+
+When a cancellation request arrives, [WorkflowCancellationService](../../src/modules/Elsa.Workflows.Runtime/Services/WorkflowCancellationService.cs) may persist `WorkflowSubStatus.Cancelling` (main status stays `WorkflowStatus.Running`) before dispatching the cancellation. Only a Running instance whose sub-status is `Suspended`, that is not currently executing, and that is unowned when an execution guard is registered, gets that mark. Executing instances keep their sub-status. `Pending` and `Interrupted` are cancelled without the interim mark, so the pending run path and the interrupted-workflow scan still own them.
+
+```
+Running / Suspended  →  Running / Cancelling  →  Finished / Cancelled
+```
+
+The mark is best effort: if the compare-and-swap throws or declines, cancellation is still dispatched without the interim sub-status.
+
+There is no recovery scanner for a stale `Cancelling` mark. A crash after persist and before enqueue can leave a suspended instance in `Cancelling`. That gap is tracked in #9130.
+
+The previous sub-status is restored only when dispatch fails (`RestoreAfterDispatchFailureAsync`) or the cancel command fails (`RestoreIfMarkedAsync`). Restore is a compare-and-swap on the `Cancelling` mark and its `CancellingAt` stamp (the `UpdatedAt` value written with the mark), and it only returns the instance to `Suspended`. If the mark is no longer current — for example because `Cancelled` already committed — nothing is restored.
+
+This explicit `Cancelling` mark distinguishes "cancellation in flight" from:
+- `Cancelled` — cancellation committed successfully.
+- `Interrupted` — force-cancelled during a graceful drain (resumable).
+- `Executing` with a stale liveness timestamp — crash recovery path.
+
+Key files: [WorkflowCancellationService](../../src/modules/Elsa.Workflows.Runtime/Services/WorkflowCancellationService.cs) and [CancelWorkflowsCommandHandler](../../src/modules/Elsa.Workflows.Runtime/Handlers/CancelWorkflowsCommandHandler.cs).
+
+The `Cancelling` sub-status is surfaced through the same `WorkflowSubStatus` enum that the API and API client mirror. When updating that enum keep all values in sync — see [Workflow API](workflow-api.md#api-client).
 
 ## Background Work
 
@@ -213,6 +238,10 @@ Recent graceful shutdown work added node-local quiescence and drain concepts. So
 - [DrainOrchestratorHostedService](../../src/modules/Elsa.Workflows.Runtime/HostedServices/DrainOrchestratorHostedService.cs)
 - [InterruptedRecoveryScanner](../../src/modules/Elsa.Workflows.Runtime/Services/InterruptedRecoveryScanner.cs)
 - [RecoverInterruptedWorkflowsStartupTask](../../src/modules/Elsa.Workflows.Runtime/StartupTasks/RecoverInterruptedWorkflowsStartupTask.cs)
+
+The interrupted-workflow scan runs once per host or shell activation, after all tenants are activated, and requeues each instance under its own tenant (instances with a null, empty or `*` tenant id run under the default tenant). Tenants activated later through `RefreshAsync` (tenant added or re-enabled) get no recovery scan; their `Interrupted` instances are recovered on the next host or shell activation.
+
+The recurring `RestartInterruptedWorkflowsTask` restarts running instances still marked as executing and not updated within the inactivity threshold, once per cycle across all tenants. Both run one node at a time. Instances whose tenant is not active on this host are skipped with a warning. A tenant with any connection string in its configuration is also scanned separately in its own scope, at startup and each cycle.
 
 The design intent is captured in [specs/002-graceful-shutdown/plan.md](../specs/002-graceful-shutdown/plan.md).
 

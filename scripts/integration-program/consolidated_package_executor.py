@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute only the original consolidated candidate; operational admission is unset.
+"""Execute only the original consolidated candidate under the pinned reviewed policy.
 
 Verification/rehearsal have no publication authority. Publication requires native
 same-run GitHub environment approval AND fresh exact reviewed policy metadata.
@@ -32,17 +32,28 @@ import prove_consolidated_packages as packages
 
 REPOSITORY = "elsa-workflows/elsa-core"
 WORKFLOW = ".github/workflows/publish-consolidated-original-candidate.yml"
-ENVIRONMENT = "elsa-3-10-feedz"
+ENVIRONMENT = "feedz-publish"
 PUBLISH_SECRET = "ELSA_CONSOLIDATED_FEEDZ_PUBLISH_KEY"
 METADATA_SECRET = "ELSA_CONSOLIDATED_METADATA_READ_TOKEN"
-METADATA_PATH = re.compile(r"repos/elsa-workflows/elsa-core/(?:actions/(?:secrets|organization-secrets)|environments/elsa-3-10-feedz/secrets)\?per_page=100&page=[1-9][0-9]*\Z")
+METADATA_PATH = re.compile(r"repos/elsa-workflows/elsa-core/(?:actions/(?:secrets|organization-secrets)|environments/feedz-publish/secrets)\?per_page=100&page=[1-9][0-9]*\Z")
 PACKAGE_BASE = "https://f.feedz.io/elsa-workflows/elsa-3/nuget/v3/packages"
 PACKAGE_PUBLISH = "https://f.feedz.io/elsa-workflows/elsa-3/nuget"
 SYMBOL_PUBLISH = "https://f.feedz.io/elsa-workflows/elsa-3/symbols"
 EXPIRY = candidate_input.EXPIRES_AT
-# A later separately approved source change must pin real existing IDs, exact
-# refs and the operational packet. No CLI/environment/artifact override exists.
-REVIEWED_OPERATIONAL_POLICY = None
+# Reviewed policy for the existing feedz-publish environment, read from the GitHub
+# API on 2026-10-30. The packet hash covers the exact bytes of
+# docs/integration-program/feedz-publish-operational-packet.md. Recreating or
+# changing the environment changes these IDs and needs a new reviewed PR.
+# No CLI/environment/artifact override exists.
+REVIEWED_OPERATIONAL_POLICY = {
+    "environment_id": 25739609238,
+    "reviewer_rule_id": 70613239,
+    "branch_rule_id": 70613240,
+    "reviewer_ids": [938393],
+    "branch_policies": [{"id": 64850643, "type": "branch", "name": "main"}],
+    "allowed_ref": "refs/heads/main",
+    "operational_packet_sha256": "416725fcd31207336a3fd9bd0d4eb18d2ff618ddcda9fb137dcc5b1d87f49d17",
+}
 MAX_BYTES = 32 * 1024 * 1024
 MAX_REQUESTS = 5000
 MAX_SECONDS = 1800

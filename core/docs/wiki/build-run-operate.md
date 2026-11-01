@@ -87,7 +87,7 @@ docker pull elsaworkflows/elsa-server-and-studio-v3:latest
 docker run -t -i -e ASPNETCORE_ENVIRONMENT='Development' -e HTTP_PORTS=8080 -e HTTP__BASEURL=http://localhost:13000 -p 13000:8080 elsaworkflows/elsa-server-and-studio-v3:latest
 ```
 
-The same source-built Community images are also published as `elsaworkflows/elsa-server-v3` and `elsaworkflows/elsa-studio-v3`. Every accepted tag publishes that exact version. Stable `3.X.Y` also moves `X.Y` when it is the highest stable tag on that line, and `latest` when it is the highest stable 3.x tag. Preview tags never move `X.Y` or `latest`. The publisher is [`.github/workflows/docker-publish.yml`](../../../.github/workflows/docker-publish.yml); `docker-ca.yml` builds the same Dockerfiles for TLS smoke tests without pushing.
+The same source-built Community images are also published as `elsaworkflows/elsa-server-v3` and `elsaworkflows/elsa-studio-v3`. `elsa-studio-v3` is UI-only; see the [Studio image upgrade note](../../../studio/docs/docs/migrations/elsa-studio-v3.md). Every accepted tag publishes that exact version. Stable `3.X.Y` also moves `X.Y` when it is the highest stable tag on that line, and `latest` when it is the highest stable 3.x tag. Preview tags never move `X.Y` or `latest`. The publisher is [`.github/workflows/docker-publish.yml`](../../../.github/workflows/docker-publish.yml); `docker-ca.yml` builds the same Dockerfiles for TLS smoke tests without pushing.
 
 Production containers must inject a secure JWT signing key through environment variables or a secrets manager. The appsettings placeholder and known public sample keys are rejected during startup outside `Development` or `Demo`.
 
@@ -151,7 +151,12 @@ Common runtime-related options in the reference host:
 - `BookmarkQueuePurgeOptions.Ttl`
 - `CachingOptions.CacheDuration`
 - `IncidentOptions.DefaultIncidentStrategy`
+- `RecurringTaskOptions.MaxDegreeOfParallelism`
 - recurring task schedules for trigger queue, bookmark queue purge, and interrupted workflow restart
+
+Recurring tasks use one timer per task type and run once per tenant, with `MaxDegreeOfParallelism` bounding the concurrent tenant runs of each task type (not globally); tasks marked `[RunOnceForAllTenants]` run once per cycle.
+
+The interval is measured between run starts, not from the end of the previous run: a 5 second task that takes 4 seconds runs every 5 seconds (previously the next run was scheduled after the previous one finished, so every 9 seconds). A tick starts a run for every tenant without waiting; a run that takes longer than the interval skips the following ticks for that tenant and never overlaps with itself. If `MaxDegreeOfParallelism` runs of one task type hang, the other tenants of that task type wait for a free slot.
 
 Structured logs options include recent log capacity, query size, source heartbeat timeout, redaction settings, and storage provider options.
 

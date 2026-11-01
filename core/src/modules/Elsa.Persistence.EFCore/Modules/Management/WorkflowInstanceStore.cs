@@ -85,7 +85,7 @@ public class EFCoreWorkflowInstanceStore : IWorkflowInstanceStore
     [RequiresUnreferencedCode("Calls Elsa.Workflows.Contracts.IWorkflowStateSerializer.SerializeAsync(WorkflowState, CancellationToken)")]
     public async ValueTask<long> CountAsync(WorkflowInstanceFilter filter, CancellationToken cancellationToken = default)
     {
-        return await _store.CountAsync(filter.Apply, cancellationToken);
+        return await _store.CountAsync(query => Filter(query, filter), cancellationToken);
     }
 
     /// <inheritdoc />
@@ -152,7 +152,7 @@ public class EFCoreWorkflowInstanceStore : IWorkflowInstanceStore
     /// <inheritdoc />
     public async ValueTask<long> DeleteAsync(WorkflowInstanceFilter filter, CancellationToken cancellationToken = default)
     {
-        return await _store.DeleteWhereAsync(query => Filter(query, filter), cancellationToken);
+        return await _store.DeleteWhereAsync(filter.Apply, cancellationToken);
     }
 
     public async Task UpdateUpdatedTimestampAsync(string workflowInstanceId, DateTimeOffset value, CancellationToken cancellationToken = default)
@@ -212,6 +212,40 @@ public class EFCoreWorkflowInstanceStore : IWorkflowInstanceStore
                     .SetProperty(x => x.SubStatus, WorkflowSubStatus.Interrupted)
                     .SetProperty(x => x.IsExecuting, false),
                 cancellationToken);
+
+        return updated > 0;
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<bool> TryTransitionSubStatusAsync(
+        string workflowInstanceId,
+        WorkflowSubStatus expected,
+        DateTimeOffset? expectedUpdatedAt,
+        WorkflowSubStatus next,
+        DateTimeOffset stampedAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (!expected.IsPermittedSubStatusTransition(next))
+            return false;
+
+        await using var dbContext = await _store.CreateDbContextAsync(cancellationToken);
+        // The tenant query filter applies to ExecuteUpdateAsync. Do not ignore it.
+        var query = dbContext.WorkflowInstances.Where(x =>
+            x.Id == workflowInstanceId
+            && x.Status == WorkflowStatus.Running
+            && x.SubStatus == expected);
+
+        if (expectedUpdatedAt is { } expectedStamp)
+            query = query.Where(x => x.UpdatedAt == expectedStamp);
+
+        if (next == WorkflowSubStatus.Cancelling)
+            query = query.Where(x => !x.IsExecuting && x.SubStatus != WorkflowSubStatus.Executing);
+
+        var updated = await query.ExecuteUpdateAsync(
+            setters => setters
+                .SetProperty(x => x.SubStatus, next)
+                .SetProperty(x => x.UpdatedAt, stampedAt),
+            cancellationToken);
 
         return updated > 0;
     }
@@ -281,6 +315,6 @@ public class EFCoreWorkflowInstanceStore : IWorkflowInstanceStore
 
     private static IQueryable<WorkflowInstance> Filter(IQueryable<WorkflowInstance> query, WorkflowInstanceFilter filter)
     {
-        return filter.Apply(query);
+        return filter.Apply(filter.TenantAgnostic ? query.IgnoreQueryFilters() : query);
     }
 }

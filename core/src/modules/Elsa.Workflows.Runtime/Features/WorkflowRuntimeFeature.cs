@@ -200,6 +200,9 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
     /// <summary>
     /// Register the specified workflow type.
     /// </summary>
+    /// <remarks>
+    /// The workflow is built once per service container to populate the definition store, so its Build method must not depend on tenant-specific services.
+    /// </remarks>
     public WorkflowRuntimeFeature AddWorkflow<T>() where T : IWorkflow
     {
         AddWorkflow(typeof(T));
@@ -209,6 +212,9 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
     /// <summary>
     /// Register the specified workflow type.
     /// </summary>
+    /// <remarks>
+    /// The workflow is built once per service container to populate the definition store, so its Build method must not depend on tenant-specific services.
+    /// </remarks>
     public WorkflowRuntimeFeature AddWorkflow(Type workflowType)
     {
         Workflows.Add(workflowType);
@@ -311,7 +317,7 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
             // RestartInterruptedWorkflowsTask: filter is SubStatus = Interrupted AND Status = Running;
             // that task's filter is IsExecuting=true.
             .AddScoped<IInterruptedRecoveryScanner, Elsa.Workflows.Runtime.Services.InterruptedRecoveryScanner>()
-            .AddStartupTask<Elsa.Workflows.Runtime.StartupTasks.RecoverInterruptedWorkflowsStartupTask>()
+            .AddSingleton<IAllTenantsActivatedEvent, Elsa.Workflows.Runtime.Handlers.RecoverInterruptedWorkflowsOnAllTenantsActivated>()
             // Internal bookmark-queue processor surfaced as an ingress source for diagnostic visibility (FR-006).
             // Pause behavior is enforced inside BookmarkQueueProcessor via IQuiescenceSignal (FR-024).
             .AddSingleton<IIngressSource, Elsa.Workflows.Runtime.IngressSources.InternalBookmarkQueueIngressSource>()
@@ -340,7 +346,8 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
             .AddScoped<IActivityExecutionManager, DefaultActivityExecutionManager>()
             .AddScoped<IActivityExecutionStatsService, ActivityExecutionStatsService>()
             .AddScoped<IActivityExecutionMapper, DefaultActivityExecutionMapper>()
-            .AddScoped<IWorkflowDefinitionStorePopulator, DefaultWorkflowDefinitionStorePopulator>()
+            .AddScoped<IWorkflowDefinitionStorePopulator>(DefaultWorkflowDefinitionStorePopulator.Create)
+            .AddSingleton<TenantAgnosticWorkflowsCache>()
             .AddScoped<IRegistriesPopulator, DefaultRegistriesPopulator>()
             .AddScoped<IWorkflowDefinitionsRefresher, WorkflowDefinitionsRefresher>()
             .AddScoped<IWorkflowDefinitionsReloader, WorkflowDefinitionsReloader>()
