@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Elsa.Common;
+using Elsa.Common.Multitenancy;
 using Elsa.ExternalAuthentication.Contracts;
 using Elsa.ExternalAuthentication.Models;
 using Elsa.ExternalAuthentication.Notifications;
@@ -23,6 +24,7 @@ public sealed class PreviewSignInService(
     IPreviewResultStore results,
     IExternalAuthenticationHandleHasher handles,
     IDataProtectionProvider dataProtection,
+    ExternalAuthenticationCallbackTenant callbackTenant,
     ISystemClock clock,
     IOptions<ExternalAuthenticationOptions> options,
     ExternalAuthenticationSecurityNotifier notifier)
@@ -38,10 +40,11 @@ public sealed class PreviewSignInService(
         if (connection.Connection.Revision != expectedRevision) return new PreviewInitiationResult.PreconditionFailed(connection.Connection.Revision);
         var adminId = ActorId(administrator);
         if (adminId is null) return new PreviewInitiationResult.Forbidden();
-        var handle = Opaque();
+        var nonce = Opaque();
+        var handle = callbackTenant.Protect(tenantId, nonce, options.Value.Lifetimes.PreviewLifetime);
         var transaction = new BrokerTransaction
         {
-            HandleHash = handles.Hash(handle), Purpose = BrokerTransactionPurpose.Preview, ClientId = adminId,
+            HandleHash = handles.Hash(nonce), Purpose = BrokerTransactionPurpose.Preview, ClientId = adminId,
             CallbackUri = new($"/external-authentication/previews/{Uri.EscapeDataString(handle)}/authorize", UriKind.Relative),
             ReturnPath = "/", TenantId = tenantId, ConnectionId = connection.Connection.Id,
             ConnectionMaterialRevision = connection.Connection.MaterialRevision, PkceChallenge = string.Empty,
@@ -53,19 +56,25 @@ public sealed class PreviewSignInService(
 
     /// <summary>
     /// Continues a preview from the opaque, one-time browser handle created by an authorized administrator.
-    /// The browser navigation is anonymous because it cannot carry Studio's bearer credential.
+    /// The browser navigation is anonymous because it cannot carry Studio's bearer credential, so the handle
+    /// itself carries the tenant used to look up PreviewStart.
     /// </summary>
     public async ValueTask<PreviewAuthorizeResult> AuthorizeAsync(string previewHandle, CancellationToken cancellationToken = default)
     {
-        var taken = await stateStore.TryTakeAsync<BrokerTransaction>(StartPurpose, handles.Hash(previewHandle), cancellationToken);
-        if (taken is not TakeResult<BrokerTransaction>.Taken { Value: var transaction } || string.IsNullOrWhiteSpace(transaction.ClientId))
+        var resolved = await callbackTenant.TryResolveAsync(previewHandle, cancellationToken);
+        if (resolved is null)
+            return new PreviewAuthorizeResult.Invalid();
+        using var opened = resolved.Push();
+        var taken = await stateStore.TryTakeAsync<BrokerTransaction>(StartPurpose, handles.Hash(opened.Nonce), cancellationToken);
+        if (taken is not TakeResult<BrokerTransaction>.Taken { Value: var transaction } || !callbackTenant.MatchesStoredTenantId(opened.TenantId, transaction.TenantId) || string.IsNullOrWhiteSpace(transaction.ClientId))
             return new PreviewAuthorizeResult.Invalid();
         var lookup = await management.FindAsync(transaction.ConnectionId!, transaction.TenantId, cancellationToken);
         if (lookup is not ManagementConnectionLookupResult.Found(var connection) || !string.Equals(connection.Connection.MaterialRevision, transaction.ConnectionMaterialRevision, StringComparison.Ordinal) || !adapters.TryGet(connection.Connection.AdapterType, out var adapter))
             return new PreviewAuthorizeResult.Invalid();
 
-        var state = Opaque();
-        transaction.HandleHash = handles.Hash(state);
+        var nonce = Opaque();
+        var state = callbackTenant.Protect(transaction.TenantId, nonce, transaction.ExpiresAt - clock.UtcNow);
+        transaction.HandleHash = handles.Hash(nonce);
         transaction.ClientState = previewHandle;
         var secrets = await ResolveSecretsAsync(connection.Connection.SecretBindings, cancellationToken);
         try
@@ -81,8 +90,12 @@ public sealed class PreviewSignInService(
 
     public async ValueTask<PreviewCallbackResult> CompleteAsync(string connectionId, string state, IReadOnlyDictionary<string, IReadOnlyCollection<string>> parameters, CancellationToken cancellationToken = default)
     {
-        var taken = await stateStore.TryTakeAsync<BrokerTransaction>(BrokerTransactionPurpose.Preview.ToString(), handles.Hash(state), cancellationToken);
-        if (taken is not TakeResult<BrokerTransaction>.Taken { Value: var transaction } || !string.Equals(transaction.ConnectionId, connectionId, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(transaction.ClientState))
+        var resolved = await callbackTenant.TryResolveAsync(state, cancellationToken);
+        if (resolved is null)
+            return new PreviewCallbackResult.Invalid();
+        using var opened = resolved.Push();
+        var taken = await stateStore.TryTakeAsync<BrokerTransaction>(BrokerTransactionPurpose.Preview.ToString(), handles.Hash(opened.Nonce), cancellationToken);
+        if (taken is not TakeResult<BrokerTransaction>.Taken { Value: var transaction } || !callbackTenant.MatchesStoredTenantId(opened.TenantId, transaction.TenantId) || !string.Equals(transaction.ConnectionId, connectionId, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(transaction.ClientState))
             return new PreviewCallbackResult.Invalid();
         var lookup = await management.FindAsync(connectionId, transaction.TenantId, cancellationToken);
         if (lookup is not ManagementConnectionLookupResult.Found(var connection) || !string.Equals(connection.Connection.MaterialRevision, transaction.ConnectionMaterialRevision, StringComparison.Ordinal) || !adapters.TryGet(connection.Connection.AdapterType, out var adapter))

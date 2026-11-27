@@ -1,4 +1,15 @@
 {
+  "3.6.4": {
+    "run_id": 45546881553,
+    "artifact_id": 14993170259,
+    "source_sha": "874e670e4ca405359a058bfee2ed9ef2a859d98c",
+    "archive_sha256": "73da3a79cfd77afc81eddb1f8a948371a7937c48e35a63d64322a2716b3fb427",
+    "legacy_release_artifact": true,
+    "feedz_count": 44,
+    "nuget_count": 44,
+    "exclude_ids": [],
+    "ancestry_branch": "release/3.6.4"
+  },
   "3.10.1": {
     "run_id": 43236516383,
     "artifact_id": 13955429317,
@@ -10,7 +21,8 @@
     "exclude_ids": [
       "Elsa.Platform.Integration"
     ],
-    "ancestry_branch": "release/3.10.0"
+    "ancestry_branch": "release/3.10.0",
+    "predates_index_attestation": true
   },
   "3.10.2": {
     "run_id": 44327700906,
@@ -23,6 +35,21 @@
     "exclude_ids": [
       "Elsa.Platform.Integration"
     ],
-    "ancestry_branch": "release/3.10.0"
+    "ancestry_branch": "release/3.10.0",
+    "predates_index_attestation": true
+  },
+  "3.10.3": {
+    "run_id": 45551499881,
+    "artifact_id": 14995683323,
+    "source_sha": "02cb506d87d9c9d2a79e0a581db1b7665ab376f6",
+    "archive_sha256": "52e4427586ed4ae6a11bd52ec6039acabfaba09c376a70d946ce9e8af38e0b82",
+    "manifest_sha256": "ce85dd8a8f29c242ee9ba5a0ef9102fc64e4e27786854ffcb833694a4d6b3a6a",
+    "feedz_count": 231,
+    "nuget_count": 230,
+    "exclude_ids": [
+      "Elsa.Platform.Integration"
+    ],
+    "ancestry_branch": "release/3.10.0",
+    "predates_index_attestation": true
   }
 }
